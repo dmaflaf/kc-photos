@@ -162,6 +162,16 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .adj h4:first-child { margin-top: 0; }
 .adj-row { display: grid; grid-template-columns: 90px minmax(0, 1fr) 44px; gap: 8px; align-items: center; font-size: 12.5px; }
 .adj-row label { color: var(--muted); cursor: pointer; user-select: none; }
+.adj-sec { border-top: 1px solid var(--line); padding-top: 6px; }
+.adj-sec > summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; font-weight: 600; padding: 4px 0; }
+.adj-sec > summary::-webkit-details-marker { display: none; }
+.adj-sec > summary::after { content: "▾"; color: var(--muted); font-weight: 400; }
+.adj-sec:not([open]) > summary::after { transform: rotate(-90deg); }
+.adj-sec > summary .cnt { margin-left: auto; margin-right: 8px; font-size: 11px; font-weight: 600; color: var(--accent); }
+.adj-sec .adj { padding: 4px 0 8px; }
+.adj-sec .seg { margin: 2px 0 6px; }
+.adj-row .sw { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+.chip-mod { font-size: 11px; color: var(--accent); background: #352712; border-radius: 999px; padding: 1px 7px; }
 .adj-row output { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 .adj-row.changed label, .adj-row.changed output { color: var(--fg); }
 .adj-row input[type="range"], .pb-bright input { accent-color: #8a8a94; }
@@ -327,9 +337,9 @@ details.sub ol { padding-left: 18px; margin: 0 0 8px; display: flex; flex-direct
         </div>
       </div>
       <div class="group">
-        <div class="group-head"><h3>Ajustes finos</h3><button class="link" id="adjReset" type="button">Restablecer</button></div>
+        <div class="group-head"><h3 id="adjTitle">Ajustes</h3><button class="link" id="adjReset" type="button">Restablecer</button></div>
+        <p class="hint" id="adjHint"></p>
         <div class="adj" id="adjSliders"></div>
-        <p class="hint">Se suman al preset. Doble clic en un nombre lo vuelve a 0.</p>
       </div>
       <div class="group">
         <h3>Recorte</h3>
@@ -1432,31 +1442,41 @@ const BUILTIN = [
   { id: 'b-bw', name: 'Blanco y negro', params: { ConvertToGrayscale: 'True', Contrast2012: 30, Clarity2012: 20, Blacks2012: -20, Highlights2012: -20 } }
 ].map(b => Object.assign({ group: 'builtin', type: 'params' }, b));
 
-const ADJ = [
-  ['Balance de blancos'],
-  ['IncrementalTemperature', 'Temperatura', -100, 100, 1],
-  ['IncrementalTint', 'Matiz', -100, 100, 1],
-  ['Tono'],
-  ['Exposure2012', 'Exposición', -2, 2, 0.05],
-  ['Contrast2012', 'Contraste', -100, 100, 1],
-  ['Highlights2012', 'Altas luces', -100, 100, 1],
-  ['Shadows2012', 'Sombras', -100, 100, 1],
-  ['Whites2012', 'Blancos', -100, 100, 1],
-  ['Blacks2012', 'Negros', -100, 100, 1],
-  ['Presencia'],
-  ['Clarity2012', 'Claridad', -100, 100, 1],
-  ['Vibrance', 'Intensidad', -100, 100, 1],
-  ['Saturation', 'Saturación', -100, 100, 1],
-  ['Efectos'],
-  ['PostCropVignetteAmount', 'Viñeta', -100, 100, 1],
-  ['Sharpness', 'Enfoque', 0, 150, 1]
+const HSL_COLORS = [['Red', 'Rojo', '#e5484d'], ['Orange', 'Naranja', '#f2862b'], ['Yellow', 'Amarillo', '#f5d90a'], ['Green', 'Verde', '#46a758'], ['Aqua', 'Agua', '#12a594'], ['Blue', 'Azul', '#3e63dd'], ['Purple', 'Púrpura', '#8e4ec6'], ['Magenta', 'Magenta', '#d6409f']];
+const ADJ_SECTIONS = [
+  { id: 'basic', title: 'Luz y color básicos', always: true, rows: [
+    ['h', 'Balance de blancos'],
+    ['IncrementalTemperature', 'Temperatura', -100, 100, 1], ['IncrementalTint', 'Matiz', -100, 100, 1],
+    ['h', 'Tono'],
+    ['Exposure2012', 'Exposición', -2, 2, 0.05], ['Contrast2012', 'Contraste', -100, 100, 1],
+    ['Highlights2012', 'Altas luces', -100, 100, 1], ['Shadows2012', 'Sombras', -100, 100, 1],
+    ['Whites2012', 'Blancos', -100, 100, 1], ['Blacks2012', 'Negros', -100, 100, 1],
+    ['h', 'Presencia'],
+    ['Clarity2012', 'Claridad', -100, 100, 1], ['Vibrance', 'Intensidad', -100, 100, 1], ['Saturation', 'Saturación', -100, 100, 1]] },
+  { id: 'hsl', title: 'Color por tonos (HSL)', hsl: true },
+  { id: 'split', title: 'Virado de color', rows: [
+    ['h', 'Luces'], ['SplitToningHighlightHue', 'Tono', 0, 360, 1], ['SplitToningHighlightSaturation', 'Saturación', 0, 100, 1],
+    ['h', 'Sombras'], ['SplitToningShadowHue', 'Tono', 0, 360, 1], ['SplitToningShadowSaturation', 'Saturación', 0, 100, 1],
+    ['SplitToningBalance', 'Equilibrio', -100, 100, 1]] },
+  { id: 'calib', title: 'Calibración', rows: [
+    ['h', 'Primario rojo'], ['RedHue', 'Tono', -100, 100, 1], ['RedSaturation', 'Saturación', -100, 100, 1],
+    ['h', 'Primario verde'], ['GreenHue', 'Tono', -100, 100, 1], ['GreenSaturation', 'Saturación', -100, 100, 1],
+    ['h', 'Primario azul'], ['BlueHue', 'Tono', -100, 100, 1], ['BlueSaturation', 'Saturación', -100, 100, 1]] },
+  { id: 'fx', title: 'Efectos', rows: [
+    ['PostCropVignetteAmount', 'Viñeta', -100, 100, 1], ['PostCropVignetteMidpoint', 'Punto medio', 0, 100, 1, 50], ['PostCropVignetteFeather', 'Desvanecer', 0, 100, 1, 50],
+    ['Sharpness', 'Enfoque', 0, 150, 1]] }
 ];
+const HSL_MODES = [['HueAdjustment', 'Tono'], ['SaturationAdjustment', 'Saturación'], ['LuminanceAdjustment', 'Luminancia']];
+const CURVE_KEYS = ['ToneCurvePV2012', 'ToneCurvePV2012Red', 'ToneCurvePV2012Green', 'ToneCurvePV2012Blue'];
+// Presets de fábrica KC3 (20 presets de Lightroom incluidos en la app).
+const FACTORY = [{"id": "f-01", "name": "01 Cine frío", "params": {"WhiteBalance": "Custom", "IncrementalTint": "-18", "RedHue": "+31", "RedSaturation": "-48", "GreenHue": "+100", "GreenSaturation": "-37", "BlueHue": "-100", "BlueSaturation": "+100", "HueAdjustmentOrange": "+51", "HueAdjustmentAqua": "+73", "SaturationAdjustmentYellow": "-100", "SaturationAdjustmentAqua": "-33", "SaturationAdjustmentBlue": "-100", "SplitToningShadowHue": "222", "SplitToningShadowSaturation": "10", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-12", "PostCropVignetteFeather": "100", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+21", "Highlights2012": "-100", "Shadows2012": "+44", "Blacks2012": "-66", "Clarity2012": "+10", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-02", "name": "02 Mate cruzado", "params": {"WhiteBalance": "Custom", "RedSaturation": "-44", "GreenHue": "+44", "GreenSaturation": "+100", "BlueHue": "-23", "BlueSaturation": "+100", "HueAdjustmentOrange": "+18", "HueAdjustmentYellow": "-57", "HueAdjustmentGreen": "-100", "HueAdjustmentBlue": "+42", "SaturationAdjustmentRed": "+36", "SaturationAdjustmentOrange": "-60", "SaturationAdjustmentYellow": "-100", "SaturationAdjustmentGreen": "-96", "SaturationAdjustmentAqua": "-100", "SaturationAdjustmentBlue": "-28", "LuminanceAdjustmentOrange": "+23", "LuminanceAdjustmentYellow": "+22", "SplitToningHighlightHue": "204", "SplitToningHighlightSaturation": "27", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-30", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+28", "Highlights2012": "-100", "Shadows2012": "+69", "Whites2012": "-100", "Blacks2012": "-60", "Clarity2012": "+67", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False", "ToneCurvePV2012Blue": [[0.0, 27.0], [255.0, 211.0]]}}, {"id": "f-03", "name": "03 Mate sombras azules", "params": {"WhiteBalance": "Custom", "RedSaturation": "-44", "GreenHue": "+44", "GreenSaturation": "+100", "BlueHue": "-23", "BlueSaturation": "+100", "HueAdjustmentOrange": "+18", "HueAdjustmentYellow": "-57", "HueAdjustmentGreen": "-100", "HueAdjustmentBlue": "+42", "SaturationAdjustmentRed": "+36", "SaturationAdjustmentOrange": "-60", "SaturationAdjustmentYellow": "-100", "SaturationAdjustmentGreen": "-96", "SaturationAdjustmentAqua": "-100", "SaturationAdjustmentBlue": "-28", "LuminanceAdjustmentOrange": "+23", "LuminanceAdjustmentYellow": "+22", "SplitToningHighlightHue": "204", "SplitToningHighlightSaturation": "27", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-30", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+28", "Highlights2012": "-100", "Shadows2012": "+69", "Whites2012": "-100", "Blacks2012": "-60", "Clarity2012": "+67", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False", "ToneCurvePV2012Blue": [[0.0, 27.0], [255.0, 255.0]]}}, {"id": "f-04", "name": "04 Mate desaturado", "params": {"WhiteBalance": "Custom", "RedSaturation": "-44", "GreenHue": "+44", "GreenSaturation": "+100", "BlueHue": "-23", "BlueSaturation": "+100", "HueAdjustmentOrange": "+18", "HueAdjustmentYellow": "-57", "HueAdjustmentGreen": "-100", "HueAdjustmentBlue": "+42", "SaturationAdjustmentRed": "+36", "SaturationAdjustmentOrange": "-60", "SaturationAdjustmentYellow": "-100", "SaturationAdjustmentGreen": "-96", "SaturationAdjustmentAqua": "-100", "SaturationAdjustmentBlue": "-28", "LuminanceAdjustmentOrange": "+23", "LuminanceAdjustmentYellow": "+22", "SplitToningHighlightHue": "204", "SplitToningHighlightSaturation": "27", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-30", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+28", "Highlights2012": "-100", "Shadows2012": "+69", "Whites2012": "-100", "Blacks2012": "-60", "Clarity2012": "+67", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-05", "name": "05 Mate verdoso", "params": {"WhiteBalance": "Custom", "IncrementalTint": "-20", "RedSaturation": "-44", "GreenHue": "+44", "GreenSaturation": "+100", "BlueHue": "-23", "BlueSaturation": "+100", "HueAdjustmentOrange": "+18", "HueAdjustmentYellow": "-57", "HueAdjustmentGreen": "-100", "HueAdjustmentBlue": "+42", "SaturationAdjustmentRed": "+36", "SaturationAdjustmentOrange": "-60", "SaturationAdjustmentYellow": "-100", "SaturationAdjustmentGreen": "-96", "SaturationAdjustmentAqua": "-100", "SaturationAdjustmentBlue": "-28", "LuminanceAdjustmentOrange": "+23", "LuminanceAdjustmentYellow": "+22", "SplitToningHighlightHue": "204", "SplitToningHighlightSaturation": "27", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-30", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+28", "Highlights2012": "-100", "Shadows2012": "+69", "Whites2012": "-100", "Blacks2012": "-60", "Clarity2012": "+67", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-06", "name": "06 Rojo destacado", "params": {"WhiteBalance": "Custom", "IncrementalTint": "-20", "RedSaturation": "-44", "GreenHue": "+44", "GreenSaturation": "+100", "BlueHue": "-23", "BlueSaturation": "+100", "HueAdjustmentYellow": "-57", "HueAdjustmentGreen": "-100", "SaturationAdjustmentRed": "+96", "SaturationAdjustmentOrange": "-18", "SaturationAdjustmentYellow": "-23", "SaturationAdjustmentGreen": "-11", "SaturationAdjustmentAqua": "-100", "SaturationAdjustmentBlue": "-100", "LuminanceAdjustmentOrange": "+23", "LuminanceAdjustmentYellow": "+22", "SplitToningHighlightHue": "204", "SplitToningHighlightSaturation": "27", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-30", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+28", "Highlights2012": "-100", "Shadows2012": "+69", "Whites2012": "-100", "Blacks2012": "-60", "Clarity2012": "+67", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-07", "name": "07 Rojo cálido destacado", "params": {"WhiteBalance": "As Shot", "RedHue": "+37", "RedSaturation": "-44", "GreenSaturation": "+100", "BlueHue": "-23", "BlueSaturation": "+100", "SaturationAdjustmentRed": "+96", "SaturationAdjustmentOrange": "-18", "SaturationAdjustmentYellow": "-23", "SaturationAdjustmentGreen": "-11", "SaturationAdjustmentAqua": "-100", "SaturationAdjustmentBlue": "-100", "LuminanceAdjustmentOrange": "+23", "LuminanceAdjustmentYellow": "+22", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-30", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+28", "Highlights2012": "-100", "Shadows2012": "+69", "Whites2012": "-100", "Blacks2012": "-60", "Clarity2012": "+67", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-08", "name": "08 Rojo pop", "params": {"WhiteBalance": "As Shot", "BlueSaturation": "+100", "SaturationAdjustmentRed": "+96", "SaturationAdjustmentOrange": "-18", "SaturationAdjustmentYellow": "-23", "SaturationAdjustmentGreen": "-11", "SaturationAdjustmentAqua": "-100", "SaturationAdjustmentBlue": "-100", "LuminanceAdjustmentOrange": "+23", "LuminanceAdjustmentYellow": "+22", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-30", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+28", "Highlights2012": "-100", "Shadows2012": "+69", "Whites2012": "-100", "Blacks2012": "-60", "Clarity2012": "+67", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-09", "name": "09 Contraste natural", "params": {"WhiteBalance": "As Shot", "BlueSaturation": "+100", "SaturationAdjustmentOrange": "-37", "LuminanceAdjustmentOrange": "+11", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PerspectiveScale": "100", "Contrast2012": "+28", "Highlights2012": "-100", "Shadows2012": "+69", "Whites2012": "-100", "Blacks2012": "-60", "Clarity2012": "+67", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-10", "name": "10 Sol intenso", "params": {"WhiteBalance": "Custom", "IncrementalTemperature": "+11", "IncrementalTint": "-8", "BlueHue": "-47", "SplitToningShadowHue": "240", "SplitToningShadowSaturation": "22", "SplitToningHighlightHue": "57", "SplitToningHighlightSaturation": "13", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PerspectiveScale": "100", "Exposure2012": "+0.45", "Highlights2012": "-100", "Shadows2012": "+40", "Blacks2012": "-84", "Clarity2012": "+100", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-11", "name": "11 Verde vibrante", "params": {"WhiteBalance": "Custom", "GreenHue": "+64", "GreenSaturation": "+77", "HueAdjustmentOrange": "+38", "HueAdjustmentYellow": "-38", "HueAdjustmentGreen": "+17", "HueAdjustmentAqua": "-100", "SaturationAdjustmentRed": "+53", "SaturationAdjustmentOrange": "-22", "SaturationAdjustmentYellow": "-50", "SaturationAdjustmentGreen": "+100", "SaturationAdjustmentAqua": "+45", "SaturationAdjustmentBlue": "+74", "LuminanceAdjustmentOrange": "+9", "LuminanceAdjustmentBlue": "-14", "SplitToningShadowHue": "239", "SplitToningShadowSaturation": "15", "SplitToningHighlightHue": "186", "SplitToningHighlightSaturation": "9", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-23", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+62", "Highlights2012": "-19", "Shadows2012": "+100", "Whites2012": "-25", "Blacks2012": "-70", "Clarity2012": "+23", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-12", "name": "12 Azul profundo cálido", "params": {"WhiteBalance": "Custom", "IncrementalTemperature": "+29", "RedHue": "+58", "RedSaturation": "+12", "GreenHue": "+99", "GreenSaturation": "-23", "BlueSaturation": "-100", "HueAdjustmentGreen": "-100", "HueAdjustmentAqua": "+100", "HueAdjustmentBlue": "-23", "SaturationAdjustmentRed": "+53", "SaturationAdjustmentOrange": "-22", "SaturationAdjustmentYellow": "-45", "SaturationAdjustmentGreen": "-100", "SaturationAdjustmentAqua": "+100", "SaturationAdjustmentBlue": "+56", "LuminanceAdjustmentOrange": "+9", "SplitToningShadowHue": "239", "SplitToningShadowSaturation": "15", "SplitToningHighlightHue": "186", "SplitToningHighlightSaturation": "9", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-23", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Highlights2012": "-91", "Shadows2012": "+55", "Whites2012": "-25", "Blacks2012": "-70", "Clarity2012": "+23", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-13", "name": "13 Azul profundo sin verdes", "params": {"WhiteBalance": "Custom", "IncrementalTemperature": "+20", "IncrementalTint": "+17", "GreenSaturation": "-100", "BlueSaturation": "+54", "HueAdjustmentOrange": "-14", "HueAdjustmentYellow": "-100", "HueAdjustmentGreen": "-100", "HueAdjustmentAqua": "+100", "HueAdjustmentBlue": "-23", "SaturationAdjustmentRed": "+53", "SaturationAdjustmentOrange": "-22", "SaturationAdjustmentYellow": "-45", "SaturationAdjustmentGreen": "-100", "SaturationAdjustmentAqua": "+100", "SaturationAdjustmentBlue": "+56", "LuminanceAdjustmentOrange": "+9", "SplitToningShadowHue": "239", "SplitToningShadowSaturation": "15", "SplitToningHighlightHue": "186", "SplitToningHighlightSaturation": "9", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-23", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Exposure2012": "-0.30", "Highlights2012": "-91", "Shadows2012": "+55", "Whites2012": "+4", "Blacks2012": "-70", "Clarity2012": "+23", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-14", "name": "14 Azul profundo mate", "params": {"WhiteBalance": "Custom", "IncrementalTemperature": "+20", "IncrementalTint": "+17", "BlueSaturation": "+54", "HueAdjustmentOrange": "-14", "HueAdjustmentYellow": "-100", "HueAdjustmentGreen": "-100", "HueAdjustmentAqua": "+100", "HueAdjustmentBlue": "-23", "SaturationAdjustmentRed": "+53", "SaturationAdjustmentOrange": "-22", "SaturationAdjustmentYellow": "-45", "SaturationAdjustmentGreen": "-100", "SaturationAdjustmentAqua": "+100", "SaturationAdjustmentBlue": "+56", "LuminanceAdjustmentOrange": "+9", "SplitToningShadowHue": "239", "SplitToningShadowSaturation": "15", "SplitToningHighlightHue": "186", "SplitToningHighlightSaturation": "9", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-23", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Exposure2012": "-0.30", "Highlights2012": "-91", "Shadows2012": "+55", "Whites2012": "+4", "Blacks2012": "-70", "Clarity2012": "+23", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-15", "name": "15 Azul sobre gris", "params": {"WhiteBalance": "Custom", "IncrementalTemperature": "+1", "BlueSaturation": "+54", "HueAdjustmentOrange": "-14", "HueAdjustmentYellow": "-38", "HueAdjustmentGreen": "-100", "HueAdjustmentAqua": "+100", "HueAdjustmentBlue": "-23", "SaturationAdjustmentRed": "+53", "SaturationAdjustmentOrange": "-38", "SaturationAdjustmentYellow": "-100", "SaturationAdjustmentGreen": "-100", "SaturationAdjustmentAqua": "+100", "SaturationAdjustmentBlue": "+56", "LuminanceAdjustmentOrange": "+9", "SplitToningHighlightHue": "233", "SplitToningHighlightSaturation": "6", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-23", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+21", "Highlights2012": "-89", "Shadows2012": "+43", "Blacks2012": "-47", "Clarity2012": "+34", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-16", "name": "16 Verde y azul vivos", "params": {"WhiteBalance": "Custom", "IncrementalTemperature": "+1", "GreenSaturation": "+78", "BlueSaturation": "+58", "HueAdjustmentOrange": "-14", "HueAdjustmentYellow": "+33", "HueAdjustmentGreen": "+2", "HueAdjustmentAqua": "-43", "SaturationAdjustmentRed": "+53", "SaturationAdjustmentOrange": "-38", "SaturationAdjustmentGreen": "+100", "SaturationAdjustmentAqua": "+100", "SaturationAdjustmentBlue": "+61", "LuminanceAdjustmentOrange": "+9", "SplitToningHighlightHue": "233", "SplitToningHighlightSaturation": "6", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-23", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+21", "Highlights2012": "-89", "Shadows2012": "+43", "Blacks2012": "-47", "Clarity2012": "+34", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-17", "name": "17 Casi blanco y negro", "params": {"WhiteBalance": "Custom", "GreenSaturation": "+78", "BlueSaturation": "+58", "SaturationAdjustmentOrange": "-29", "SaturationAdjustmentGreen": "-100", "SaturationAdjustmentAqua": "-100", "SaturationAdjustmentBlue": "-100", "SplitToningHighlightHue": "233", "SplitToningHighlightSaturation": "6", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-23", "PostCropVignetteMidpoint": "50", "PostCropVignetteFeather": "50", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+21", "Highlights2012": "-60", "Shadows2012": "+43", "Blacks2012": "-47", "Clarity2012": "+34", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-18", "name": "18 Frío suave", "params": {"WhiteBalance": "Custom", "IncrementalTemperature": "-12", "IncrementalTint": "-15", "RedSaturation": "-20", "GreenHue": "+51", "BlueSaturation": "+82", "HueAdjustmentOrange": "+15", "HueAdjustmentYellow": "-37", "HueAdjustmentGreen": "-100", "HueAdjustmentAqua": "+80", "HueAdjustmentBlue": "-37", "SaturationAdjustmentRed": "+38", "SaturationAdjustmentOrange": "+28", "SaturationAdjustmentYellow": "+100", "SaturationAdjustmentGreen": "-100", "SaturationAdjustmentAqua": "-48", "SaturationAdjustmentBlue": "+60", "LuminanceAdjustmentAqua": "+23", "SplitToningShadowHue": "222", "SplitToningHighlightHue": "218", "SplitToningHighlightSaturation": "13", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-21", "PostCropVignetteFeather": "100", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "-15", "Highlights2012": "-100", "Shadows2012": "+54", "Blacks2012": "-66", "Clarity2012": "+35", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-19", "name": "19 Verano suave", "params": {"WhiteBalance": "Custom", "IncrementalTemperature": "-12", "IncrementalTint": "-15", "RedSaturation": "-20", "GreenHue": "+51", "BlueSaturation": "+82", "HueAdjustmentYellow": "-28", "HueAdjustmentGreen": "-100", "HueAdjustmentAqua": "+37", "SaturationAdjustmentRed": "+38", "SaturationAdjustmentOrange": "+28", "SaturationAdjustmentYellow": "+100", "SaturationAdjustmentGreen": "+100", "SaturationAdjustmentAqua": "-48", "SaturationAdjustmentBlue": "+60", "LuminanceAdjustmentAqua": "+23", "SplitToningShadowHue": "222", "SplitToningHighlightHue": "218", "SplitToningHighlightSaturation": "13", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-21", "PostCropVignetteFeather": "100", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "-15", "Highlights2012": "-100", "Shadows2012": "+54", "Blacks2012": "-66", "Clarity2012": "+35", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}, {"id": "f-20", "name": "20 Oscuro dramático", "params": {"WhiteBalance": "Custom", "RedSaturation": "-48", "GreenSaturation": "-28", "BlueHue": "-87", "BlueSaturation": "+100", "HueAdjustmentOrange": "+51", "HueAdjustmentYellow": "+100", "HueAdjustmentGreen": "-100", "HueAdjustmentAqua": "+73", "SaturationAdjustmentRed": "+38", "SaturationAdjustmentYellow": "-100", "SaturationAdjustmentGreen": "-100", "SaturationAdjustmentAqua": "-100", "SaturationAdjustmentBlue": "-100", "SplitToningShadowHue": "222", "SplitToningShadowSaturation": "10", "ParametricShadowSplit": "25", "ParametricMidtoneSplit": "50", "ParametricHighlightSplit": "75", "SharpenRadius": "+1.0", "SharpenDetail": "25", "PostCropVignetteAmount": "-21", "PostCropVignetteFeather": "100", "PostCropVignetteStyle": "1", "PerspectiveScale": "100", "Contrast2012": "+21", "Highlights2012": "-100", "Shadows2012": "+44", "Blacks2012": "-66", "Clarity2012": "+10", "DefringePurpleHueLo": "30", "DefringePurpleHueHi": "70", "DefringeGreenHueLo": "40", "DefringeGreenHueHi": "60", "ConvertToGrayscale": "False"}}].map(f => Object.assign({ group: 'factory', type: 'params' }, f));
+
 const IDENTITY = { N: 2, lut: bakeLut((r, g, b) => [r, g, b], 2), local: null, applied: [], ignored: [] };
 
 /* ---------- Biblioteca de presets ---------- */
-function allPresets() { return library.concat(BUILTIN); }
+function allPresets() { return FACTORY.concat(library, BUILTIN); }
 function presetById(id) { return allPresets().find(p => p.id === id); }
-function groupOf(p) { return p.group === 'builtin' ? 'KC3 básicos' : p.group === 'mine' ? 'Míos' : (p.groupName || 'Importados'); }
+function groupOf(p) { return p.group === 'factory' ? 'Fábrica KC3' : p.group === 'builtin' ? 'KC3 básicos' : p.group === 'mine' ? 'Míos' : (p.groupName || 'Importados'); }
 
 function compileItem(item, depth = 0) {
   if (compiledCache.has(item.id)) return compiledCache.get(item.id);
@@ -1464,7 +1484,7 @@ function compileItem(item, depth = 0) {
   const lut = item.lutB64 ? (item._lut || (item._lut = b64ToLut(item.lutB64))) : null;
   if (item.type === 'lut') c = { N: item.N, lut, local: null, applied: ['Color desde ' + (item.lutName || 'LUT')], ignored: [] };
   else if (item.type === 'combo') {
-    const st = buildStyle(item.layers || [], item.params || {}, depth + 1);
+    const st = buildStyle(item.layers || [], item.params || {}, depth + 1, { k: item.paramsK, first: item.paramsFirst });
     c = st ? { N: st.N, lut: st.lut, local: st.local, applied: st.applied, ignored: st.ignored } : IDENTITY;
   } else {
     const p = compilePreset(item.params || {});
@@ -1475,14 +1495,16 @@ function compileItem(item, depth = 0) {
 }
 
 // Une capas de presets (cada una con su intensidad) y ajustes finos en un solo estilo.
-function buildStyle(spec, params, depth = 0) {
+function buildStyle(spec, params, depth = 0, opts = {}) {
   const layers = [];
+  const pk = opts.k == null ? 1 : opts.k;
+  if (opts.first && paramsActive(params) && pk > 0) layers.push({ c: compilePreset(params), k: pk, name: opts.name || 'Ajustes' });
   if (depth < 4) for (const s of spec) {
     if (s.enabled === false || !(s.amount > 0)) continue;
     const item = presetById(s.libId);
     if (item) layers.push({ c: compileItem(item, depth), k: s.amount / 100, name: item.name });
   }
-  if (params && Object.values(params).some(v => +v)) layers.push({ c: compilePreset(params), k: 1, name: 'Ajustes finos' });
+  if (!opts.first && paramsActive(params) && pk > 0) layers.push({ c: compilePreset(params), k: pk, name: opts.name || 'Ajustes finos' });
   if (!layers.length) return null;
   let N, lut;
   if (layers.length === 1 && layers[0].k === 1) { N = layers[0].c.N; lut = layers[0].c.lut; }
@@ -1584,12 +1606,36 @@ async function render(it, opt) {
 let lookTimer;
 function lookChanged(immediate) {
   clearTimeout(lookTimer);
-  const run = () => { style = buildStyle(stack, A); saveLook(); renderActiveLook(); markTiles(); renderMain(); };
+  const run = () => { style = currentStyle(); saveLook(); renderActiveLook(); markTiles(); renderMain(); renderAdjustHeader(); };
   if (immediate) run(); else lookTimer = setTimeout(run, 120);
 }
+// Un preset de ajustes (como los de Lightroom) se "abre" en los controles: A guarda sus valores y se pueden mover.
+function isEditable(s) { return !!(s && s.editable); }
+function currentStyle() {
+  const main = stack[0];
+  if (isEditable(main)) { const it = presetById(main.libId); return buildStyle(stack.slice(1), A, 0, { k: main.amount / 100, first: true, name: it ? it.name : 'Preset' }); }
+  return buildStyle(stack, A);
+}
+function paramsActive(p) { return !!p && Object.entries(p).some(([k, v]) => k[0] !== '_' && (Array.isArray(v) ? v.length : typeof v === 'string' ? (/^true$/i.test(v) || (+v && k !== 'WhiteBalance')) : +v)); }
+function normParams(src) {
+  const o = {};
+  for (const [k, v] of Object.entries(src || {})) {
+    if (k[0] === '_') continue;
+    if (Array.isArray(v)) { if (!(v.length === 2 && v[0][0] === 0 && v[0][1] === 0 && v[1][0] === 255 && v[1][1] === 255)) o[k] = v.map(pt => pt.slice()); continue; }
+    if (typeof v === 'string' && !/^[-+]?\d*\.?\d+$/.test(v.trim())) { if (/^true$/i.test(v)) o[k] = v; continue; }
+    const n = parseFloat(v); if (Number.isFinite(n) && n !== 0) o[k] = n;
+  }
+  return o;
+}
+function baseParams() { const m = stack[0]; return isEditable(m) ? normParams((presetById(m.libId) || {}).params) : {}; }
+function isModified() { return isEditable(stack[0]) && JSON.stringify(sortObj(A)) !== JSON.stringify(sortObj(baseParams())); }
+function sortObj(o) { return Object.keys(o).sort().reduce((r, k) => (r[k] = o[k], r), {}); }
 function setLook(id) {
-  stack = id ? [{ libId: id, amount: 100, enabled: true }] : [];
-  hoverLook = null; lookChanged(true);
+  const item = id ? presetById(id) : null;
+  if (!item) { stack = []; A = {}; }
+  else if (item.type === 'params' && !item.lutB64) { stack = [{ libId: id, amount: 100, enabled: true, editable: true }]; A = normParams(item.params); }
+  else { stack = [{ libId: id, amount: 100, enabled: true }]; A = {}; }
+  hoverLook = null; renderAdjust(); lookChanged(true);
 }
 function mixLook(id) {
   if (stack.some(s => s.libId === id)) { stack = stack.filter(s => s.libId !== id); }
@@ -1687,14 +1733,18 @@ async function importOne(file) {
 function saveOwnPreset() {
   if (!stack.length && !hasAdj()) { toast('Elige un preset o mueve algún ajuste antes de guardar'); return; }
   const name = ($('#presetName').value || '').trim() || 'Mi preset ' + (library.filter(p => p.group === 'mine').length + 1);
-  const item = { id: 'm-' + Date.now(), name, group: 'mine', type: 'combo', layers: stack.map(s => ({ libId: s.libId, amount: s.amount })), params: Object.assign({}, A) };
+  const main = stack[0], editable = isEditable(main), mixes = stack.slice(editable ? 1 : 0);
+  let item;
+  if (editable && !mixes.length && main.amount === 100) item = { id: 'm-' + Date.now(), name, group: 'mine', type: 'params', params: JSON.parse(JSON.stringify(A)) };
+  else if (!main && !mixes.length) item = { id: 'm-' + Date.now(), name, group: 'mine', type: 'params', params: JSON.parse(JSON.stringify(A)) };
+  else item = { id: 'm-' + Date.now(), name, group: 'mine', type: 'combo', layers: mixes.map(s => ({ libId: s.libId, amount: s.amount })), params: JSON.parse(JSON.stringify(A)), paramsK: editable ? main.amount / 100 : 1, paramsFirst: editable };
   library.push(item); saveLibrary();
-  A = {}; $('#presetName').value = '';
-  renderAdjust(); renderPresetPanel(['Míos']);
+  $('#presetName').value = '';
+  renderPresetPanel(['Míos']);
   setLook(item.id);
-  toast('Guardado “' + name + '”');
+  toast('Guardado “' + name + '” en Míos');
 }
-function hasAdj() { return Object.values(A).some(v => +v); }
+function hasAdj() { return paramsActive(A); }
 
 function deletePreset(id) {
   const used = library.filter(p => p.type === 'combo' && (p.layers || []).some(l => l.libId === id));
@@ -1727,13 +1777,14 @@ async function importPresetFile(file) {
 }
 
 /* ---------- Panel de presets ---------- */
-const openGroups = new Set(store.get('openGroups') || ['KC3 básicos', 'Míos']);
+const openGroups = new Set(store.get('openGroups') || ['Fábrica KC3', 'Míos']);
+if (!store.get('factorySeen')) { openGroups.add('Fábrica KC3'); store.set('factorySeen', true); store.set('openGroups', [...openGroups]); }
 function renderPresetPanel(openThese) {
   if (openThese) { openThese.forEach(g => openGroups.add(g)); store.set('openGroups', [...openGroups]); }
   const q = ($('#presetSearch').value || '').trim().toLowerCase();
   const box = $('#presetGroups'); box.textContent = '';
   const groups = new Map();
-  const order = p => p.group === 'imported' ? 0 : p.group === 'mine' ? 1 : 2;
+  const order = p => ({ factory: 0, imported: 1, mine: 2, builtin: 3 })[p.group];
   for (const p of allPresets().slice().sort((a, b) => order(a) - order(b))) {
     if (q && !p.name.toLowerCase().includes(q)) continue;
     const g = groupOf(p);
@@ -1789,7 +1840,7 @@ function hoverPreview(id, name) {
   clearTimeout(hoverTimer);
   if (id === undefined) { hoverTimer = setTimeout(() => { if (hoverLook) { hoverLook = null; renderMain(); } }, 80); return; }
   hoverTimer = setTimeout(() => {
-    hoverLook = { name, st: buildStyle(id ? [{ libId: id, amount: 100 }] : [], A) };
+    hoverLook = { name, st: buildStyle(id ? [{ libId: id, amount: 100 }] : [], {}) };
     renderMain();
   }, 140);
 }
@@ -1832,15 +1883,16 @@ function renderActiveLook() {
   stack.forEach((s, i) => {
     const item = presetById(s.libId); if (!item) return;
     const L = el('div', 'al-layer'), row = el('div', 'al-row');
-    row.appendChild(el('b', null, (i ? '+ ' : '') + item.name));
+    const nm = el('b', null, (i ? '+ ' : '') + item.name); row.appendChild(nm);
+    if (!i && isModified()) row.appendChild(el('span', 'chip-mod', 'Modificado'));
     const btns = el('div', 'lbtns');
-    if (item.group !== 'builtin') {
+    if (library.includes(item)) {
       const del = el('button', 'icon-btn', 'Borrar'); del.type = 'button'; del.title = 'Borrar este preset de la biblioteca';
       del.onclick = () => { if (del.dataset.c !== '1') { del.dataset.c = '1'; del.textContent = '¿Seguro?'; setTimeout(() => { if (del.isConnected) { del.dataset.c = ''; del.textContent = 'Borrar'; } }, 3000); return; } deletePreset(item.id); };
       btns.appendChild(del);
     }
     const x = el('button', 'icon-btn', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Quitar ' + item.name);
-    x.onclick = () => { stack.splice(i, 1); lookChanged(true); };
+    x.onclick = () => { const wasMain = !i && isEditable(s); stack.splice(i, 1); if (wasMain) { A = {}; if (stack[0]) delete stack[0].editable; } renderAdjust(); lookChanged(true); };
     btns.appendChild(x); row.appendChild(btns);
     const amt = el('div', 'al-amt'), r = el('input'), out = el('output', null, s.amount + '%');
     r.type = 'range'; r.min = 0; r.max = 150; r.step = 5; r.value = s.amount; r.setAttribute('aria-label', 'Intensidad de ' + item.name);
@@ -1855,20 +1907,86 @@ function renderActiveLook() {
 }
 
 /* ---------- Ajustes finos ---------- */
+let hslMode = 'HueAdjustment';
+const openSecs = new Set(['basic']);
 function renderAdjust() {
   const box = $('#adjSliders'); box.textContent = '';
-  for (const def of ADJ) {
-    if (def.length === 1) { box.appendChild(el('h4', null, def[0])); continue; }
-    const [key, label, min, max, step] = def;
+  const base = baseParams();
+  const sliderRow = (key, label, min, max, step, def = 0, sw) => {
     const row = el('div', 'adj-row'), id = 'adj-' + key;
-    const lab = el('label', null, label); lab.htmlFor = id;
-    const r = el('input'); r.type = 'range'; r.id = id; r.min = min; r.max = max; r.step = step; r.value = A[key] || 0;
+    const lab = el('label'); lab.htmlFor = id;
+    if (sw) { const s = el('span', 'sw'); s.style.background = sw; lab.appendChild(s); }
+    lab.append(label);
+    const r = el('input'); r.type = 'range'; r.id = id; r.min = min; r.max = max; r.step = step;
+    r.value = A[key] != null ? A[key] : def;
     const out = el('output');
-    const show = () => { const v = +r.value; out.textContent = step < 1 ? (v > 0 ? '+' : '') + v.toFixed(2) : (v > 0 ? '+' : '') + v; row.classList.toggle('changed', v !== 0); };
-    r.oninput = () => { const v = +r.value; if (v) A[key] = v; else delete A[key]; show(); lookChanged(); };
-    lab.ondblclick = () => { r.value = 0; delete A[key]; show(); lookChanged(); };
-    show();
-    row.append(lab, r, out); box.appendChild(row);
+    const show = () => { const v = +r.value; out.textContent = step < 1 ? (v > 0 ? '+' : '') + v.toFixed(2) : (min < 0 && v > 0 ? '+' : '') + v; row.classList.toggle('changed', v !== def); };
+    r.oninput = () => { const v = +r.value; if (v !== def) A[key] = v; else delete A[key]; show(); lookChanged(); updateSecCounts(); };
+    lab.ondblclick = () => { const b = base[key] != null ? base[key] : def; r.value = b; if (b !== def) A[key] = b; else delete A[key]; show(); lookChanged(); updateSecCounts(); };
+    show(); row.append(lab, r, out); return row;
+  };
+  for (const sec of ADJ_SECTIONS) {
+    const d = el('details', 'adj-sec'); d.dataset.sec = sec.id;
+    const n = secCount(sec);
+    d.open = sec.always || n > 0 || openSecs.has(sec.id);
+    d.addEventListener('toggle', () => d.open ? openSecs.add(sec.id) : openSecs.delete(sec.id));
+    const sm = el('summary', null, sec.title); sm.appendChild(el('span', 'cnt', n ? n + (n === 1 ? ' cambio' : ' cambios') : ''));
+    d.appendChild(sm);
+    const body = el('div', 'adj');
+    if (sec.hsl) {
+      const seg = el('div', 'seg full');
+      for (const [pre, lab] of HSL_MODES) {
+        const c = HSL_COLORS.filter(([k]) => +A[pre + k]).length;
+        const b = el('button', null, lab + (c ? ' · ' + c : '')); b.type = 'button'; b.setAttribute('aria-pressed', String(pre === hslMode));
+        b.onclick = () => { hslMode = pre; renderAdjust(); };
+        seg.appendChild(b);
+      }
+      body.appendChild(seg);
+      for (const [k, lab, sw] of HSL_COLORS) body.appendChild(sliderRow(hslMode + k, lab, -100, 100, 1, 0, sw));
+    } else {
+      for (const r of sec.rows) {
+        if (r[0] === 'h') { body.appendChild(el('h4', null, r[1])); continue; }
+        body.appendChild(sliderRow(r[0], r[1], r[2], r[3], r[4], r[5] || 0));
+      }
+    }
+    if (sec.id === 'basic' && CURVE_KEYS.some(k => A[k])) {
+      const note = el('p', 'hint', 'Este preset usa una curva de tonos propia y se aplica tal cual. ');
+      const rm = el('button', 'link', 'Quitar la curva'); rm.type = 'button';
+      rm.onclick = () => { CURVE_KEYS.forEach(k => delete A[k]); renderAdjust(); lookChanged(true); };
+      note.appendChild(rm); body.appendChild(note);
+    }
+    if (sec.id === 'basic' && /^true$/i.test(A.ConvertToGrayscale || '')) {
+      const note = el('p', 'hint', 'Blanco y negro activado. ');
+      const rm = el('button', 'link', 'Volver a color'); rm.type = 'button';
+      rm.onclick = () => { delete A.ConvertToGrayscale; renderAdjust(); lookChanged(true); };
+      note.appendChild(rm); body.appendChild(note);
+    }
+    d.appendChild(body); box.appendChild(d);
+  }
+  renderAdjustHeader();
+}
+function secCount(sec) {
+  if (sec.hsl) return HSL_MODES.reduce((s, [pre]) => s + HSL_COLORS.filter(([k]) => +A[pre + k]).length, 0);
+  return sec.rows.filter(r => r[0] !== 'h' && A[r[0]] != null && +A[r[0]] !== (r[5] || 0)).length;
+}
+function updateSecCounts() {
+  document.querySelectorAll('.adj-sec').forEach(d => {
+    const sec = ADJ_SECTIONS.find(s => s.id === d.dataset.sec), n = secCount(sec);
+    d.querySelector('.cnt').textContent = n ? n + (n === 1 ? ' cambio' : ' cambios') : '';
+  });
+}
+function renderAdjustHeader() {
+  const main = stack[0], item = main ? presetById(main.libId) : null;
+  if (isEditable(main) && item) {
+    $('#adjTitle').textContent = 'Ajustes de «' + item.name + '»';
+    $('#adjHint').textContent = isModified() ? 'Modificaste el preset. “Restablecer” vuelve a sus valores originales; también puedes guardarlo como preset propio abajo.' : 'Estos son los valores del preset. Muévelos para adaptarlo a tus fotos; doble clic en un nombre vuelve al valor del preset.';
+    $('#adjReset').textContent = 'Restablecer preset';
+    $('#adjReset').disabled = !isModified();
+  } else {
+    $('#adjTitle').textContent = item ? 'Ajustes finos' : 'Ajustes';
+    $('#adjHint').textContent = item ? 'Este preset es un LUT o una mezcla: sus valores no se pueden abrir. Estos ajustes se suman encima.' : 'Ajusta la foto a mano o elige un preset a la izquierda para cargar sus valores aquí.';
+    $('#adjReset').textContent = 'Restablecer';
+    $('#adjReset').disabled = !hasAdj();
   }
 }
 
@@ -2226,7 +2344,7 @@ $('#presetSearch').oninput = () => { clearTimeout(renderPresetPanel.t); renderPr
 $('#presetExport').onclick = exportPresets;
 $('#presetImport').onchange = e => { if (e.target.files[0]) importPresetFile(e.target.files[0]); e.target.value = ''; };
 $('#haldBtn').onclick = () => makeHald(8).toBlob(b => downloadBlob(b, 'HALD_8_KC3.png'), 'image/png');
-$('#adjReset').onclick = () => { A = {}; renderAdjust(); lookChanged(true); };
+$('#adjReset').onclick = () => { A = baseParams(); renderAdjust(); lookChanged(true); };
 $('#presetSave').onclick = saveOwnPreset;
 $('#presetName').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); saveOwnPreset(); } });
 $('#footInputH').onchange = e => { if (e.target.files[0]) loadFoot(e.target.files[0], 'h'); e.target.value = ''; };
@@ -2289,11 +2407,11 @@ window.addEventListener('beforeunload', e => { if (busy || items.length) { e.pre
   for (const l of store.get('logos') || []) { try { await pushLogo(l.name, l.src); } catch (e) {} }
   const fd = store.get('foot') || {};
   for (const k of ['h', 'v']) if (fd[k]) { try { await setFoot(k, fd[k].name, fd[k].src); } catch (e) {} }
-  library = (store.get('library') || []).filter(p => p && p.id && !String(p.id).startsWith('b-'));
+  library = (store.get('library') || []).filter(p => p && p.id && !/^(b|f)-/.test(String(p.id)));
   // Las versiones anteriores agregaban cada preset importado a la pila: aquí se empieza con uno solo.
-  stack = (store.get('stack') || []).filter(s => s && presetById(s.libId)).slice(0, 1).map(s => ({ libId: s.libId, amount: s.amount || 100, enabled: true }));
+  stack = (store.get('stack') || []).filter(s => s && presetById(s.libId)).map(s => ({ libId: s.libId, amount: s.amount != null ? s.amount : 100, enabled: s.enabled !== false, editable: !!s.editable }));
   A = store.get('adjust') || {};
-  style = buildStyle(stack, A);
+  style = currentStyle();
   renderLogos(); renderFoot(); renderAdjust(); renderActiveLook(); renderPresetPanel();
   renderFilm(); updateCounts(); renderPhotoBar(); renderMain();
 })();
