@@ -178,10 +178,22 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .adj-row.changed input[type="range"] { accent-color: var(--accent); }
 input[type="color"] { width: 44px; height: 30px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); padding: 2px; }
 .slot { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; align-items: center; background: var(--panel-2); border-radius: 7px; padding: 6px; }
-.slot .sthumb { height: 36px; border-radius: 4px; background: repeating-conic-gradient(#3a3a40 0 25%, #2c2c31 0 50%) 0 0/10px 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.slot .sthumb img { max-width: 60px; max-height: 32px; }
+.sthumb { height: 36px; border-radius: 4px; background: repeating-conic-gradient(#3a3a40 0 25%, #2c2c31 0 50%) 0 0/10px 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.sthumb img { max-width: 60px; max-height: 32px; }
 .slot .sname { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slot .sname small { display: block; color: var(--muted); }
+.foot-layers { display: flex; flex-direction: column; gap: 8px; }
+.flayer { background: var(--panel-2); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.flayer.off { opacity: .5; }
+.flayer .fl-head { display: grid; grid-template-columns: auto 64px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.flayer .fl-head input { accent-color: var(--accent); }
+.flayer .fl-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flayer .fl-name small { display: block; color: var(--muted); }
+.flayer .fl-row { display: grid; grid-template-columns: 62px minmax(0, 1fr) 40px; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.flayer .fl-row output { text-align: right; color: var(--fg); font-variant-numeric: tabular-nums; }
+.flayer select { padding: 5px 8px; font-size: 12.5px; }
+.flayer .seg button { padding: 4px 6px; font-size: 12px; }
+.fl-order { font-size: 11px; color: var(--muted); }
 .lbtns { display: flex; gap: 2px; align-items: center; }
 .chips { display: flex; gap: 4px; flex-wrap: wrap; }
 .chip { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: var(--panel-2); color: var(--muted); white-space: nowrap; }
@@ -377,22 +389,10 @@ details.sub ol { padding-left: 18px; margin: 0 0 8px; display: flex; flex-direct
         <button type="button" data-v="none">Ninguno</button>
       </div>
       <div class="group" id="footPngFields">
-        <div class="slot" id="footSlotH"></div>
-        <div class="slot" id="footSlotV"></div>
-        <input type="file" id="footInputH" accept="image/png" hidden>
-        <input type="file" id="footInputV" accept="image/png" hidden>
-        <p class="hint">Exporta el pie desde Illustrator como PNG con fondo transparente, del ancho completo de la foto. La versión vertical es opcional.</p>
-        <div class="field">
-          <label for="s-footFit">Cómo se coloca</label>
-          <select id="s-footFit" data-s="footFit">
-            <option value="bottom">Ancho completo, pegado abajo</option>
-            <option value="frame">Cubre toda la foto (marco)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="s-footOpacity">Opacidad <output id="o-footOpacity"></output></label>
-          <input type="range" id="s-footOpacity" data-s="footOpacity" min="30" max="100" step="5">
-        </div>
+        <div class="foot-layers" id="footLayers"></div>
+        <div><label class="btn small" for="footInput">+ Agregar pie (PNG)</label></div>
+        <input type="file" id="footInput" accept="image/png" multiple hidden>
+        <p class="hint">Exporta cada pie desde Illustrator como PNG con fondo transparente, del ancho completo de la foto. Se montan en orden: el de arriba de la lista queda debajo y el último queda encima. Usa las flechas para cambiar el orden.</p>
       </div>
       <div class="group" id="footLogoFields">
         <div class="group" id="logoList"></div>
@@ -538,7 +538,7 @@ let logos = [], items = [], filter = 'all', busy = false, cancelRequested = fals
 let currentId = null, showOrig = false, hoverLook = null;
 let library = [], stack = [], A = {}, style = null, lastImportedId = null;
 const compiledCache = new Map();
-const foot = { h: null, v: null };
+let footLayers = []; // capas de pie de foto: {id, name, src, img, w, h, opacity, fit, orient, enabled}
 let supportsWebp = false;
 try { supportsWebp = document.createElement('canvas').toDataURL('image/webp').startsWith('data:image/webp'); } catch (e) {}
 
@@ -1309,14 +1309,6 @@ function drawLogos(x, ow, oh, lh, band) {
   x.restore();
 }
 
-function drawFootPng(x, ow, oh) {
-  const f = (oh > ow && foot.v) ? foot.v : (foot.h || foot.v);
-  if (!f) return;
-  x.save(); x.globalAlpha = S.footOpacity / 100; x.imageSmoothingQuality = 'high';
-  if (S.footFit === 'frame') x.drawImage(f.img, 0, 0, ow, oh);
-  else { const h = Math.round(ow * f.h / f.w); x.drawImage(f.img, 0, oh - h, ow, h); }
-  x.restore();
-}
 
 function canvasToBlob(c, type, q) { return new Promise(r => c.toBlob(r, type, q)); }
 
@@ -1991,32 +1983,76 @@ function renderAdjustHeader() {
 }
 
 /* ---------- Pie de foto PNG y logos ---------- */
-async function loadFoot(file, slot) {
-  try {
-    const url = URL.createObjectURL(file), img = new Image(); img.src = url; await img.decode();
-    let w = img.naturalWidth, h = img.naturalHeight;
-    const k = Math.min(1, 5000 / Math.max(w, h)); w = Math.round(w * k); h = Math.round(h * k);
-    const c = makeCanvas(w, h); c.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
-    await setFoot(slot, file.name, c.toDataURL('image/png'));
-    S.footMode = 'png'; saveSettings(); syncLabels();
-    saveFoot(); renderFoot(); renderMain();
-  } catch (e) { toast('No se pudo leer el PNG ' + file.name); }
+async function addFootFiles(files) {
+  for (const file of files) {
+    try {
+      const url = URL.createObjectURL(file), img = new Image(); img.src = url; await img.decode();
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const k = Math.min(1, 5000 / Math.max(w, h)); w = Math.round(w * k); h = Math.round(h * k);
+      const c = makeCanvas(w, h); c.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
+      await pushFoot({ name: file.name, src: c.toDataURL('image/png'), opacity: 100, fit: 'bottom', orient: 'all', enabled: true });
+    } catch (e) { toast('No se pudo leer el PNG ' + file.name); }
+  }
+  S.footMode = 'png'; saveSettings(); syncLabels();
+  saveFoot(); renderFoot(); renderMain();
 }
-async function setFoot(slot, name, src) { const img = new Image(); img.src = src; await img.decode(); foot[slot] = { name, src, img, w: img.naturalWidth, h: img.naturalHeight }; }
+async function pushFoot(d) {
+  const img = new Image(); img.src = d.src; await img.decode();
+  footLayers.push({ id: ++uid, name: d.name, src: d.src, img, w: img.naturalWidth, h: img.naturalHeight, opacity: d.opacity != null ? d.opacity : 100, fit: d.fit || 'bottom', orient: d.orient || 'all', enabled: d.enabled !== false });
+}
 function saveFoot() {
-  const data = {}; for (const k of ['h', 'v']) if (foot[k]) data[k] = { name: foot[k].name, src: foot[k].src };
-  if (!store.set('foot', data)) notice('El PNG del pie es muy pesado para recordarlo al cerrar. Tendrás que cargarlo de nuevo la próxima vez.');
+  if (!store.set('footLayers', footLayers.map(f => ({ name: f.name, src: f.src, opacity: f.opacity, fit: f.fit, orient: f.orient, enabled: f.enabled }))))
+    notice('Los pies de foto son muy pesados para recordarlos al cerrar. Tendrás que cargarlos de nuevo la próxima vez.');
 }
+let footSaveTimer;
+function footChanged(rerender) { clearTimeout(footSaveTimer); footSaveTimer = setTimeout(saveFoot, 300); if (rerender) renderFoot(); renderMain(); }
 function renderFoot() {
-  for (const [slot, label, hint] of [['h', 'Fotos horizontales', 'Carga tu PNG'], ['v', 'Fotos verticales', 'Opcional']]) {
-    const box = $('#footSlot' + slot.toUpperCase()); box.textContent = '';
-    const th = el('div', 'sthumb'), f = foot[slot];
-    if (f) { const im = el('img'); im.src = f.src; im.alt = ''; th.appendChild(im); }
-    const nm = el('div', 'sname'); nm.append(label); nm.appendChild(el('small', null, f ? `${f.name} · ${f.w}×${f.h}` : hint));
+  const box = $('#footLayers'); box.textContent = '';
+  if (!footLayers.length) { box.appendChild(el('p', 'hint', 'Aún no hay pies de foto. Agrega uno o varios PNG.')); return; }
+  footLayers.forEach((f, i) => {
+    const card = el('div', 'flayer' + (f.enabled ? '' : ' off'));
+    const head = el('div', 'fl-head');
+    const on = el('input'); on.type = 'checkbox'; on.checked = f.enabled; on.setAttribute('aria-label', 'Mostrar ' + f.name);
+    on.onchange = () => { f.enabled = on.checked; card.classList.toggle('off', !f.enabled); footChanged(); };
+    const th = el('div', 'sthumb'), im = el('img'); im.src = f.src; im.alt = ''; th.appendChild(im);
+    const nm = el('div', 'fl-name'); nm.append(f.name);
+    nm.appendChild(el('small', null, `Capa ${i + 1} de ${footLayers.length}${i === footLayers.length - 1 && footLayers.length > 1 ? ' · encima de todo' : i === 0 && footLayers.length > 1 ? ' · al fondo' : ''}`));
     const btns = el('div', 'lbtns');
-    const up = el('label', 'btn small', f ? 'Cambiar' : 'Cargar'); up.htmlFor = 'footInput' + slot.toUpperCase(); btns.appendChild(up);
-    if (f) { const rm = el('button', 'icon-btn', '✕'); rm.type = 'button'; rm.setAttribute('aria-label', 'Quitar'); rm.onclick = () => { foot[slot] = null; saveFoot(); renderFoot(); renderMain(); }; btns.appendChild(rm); }
-    box.append(th, nm, btns);
+    const mk = (tx, lab, fn, dis) => { const b = el('button', 'icon-btn', tx); b.type = 'button'; b.setAttribute('aria-label', lab); b.title = lab; b.disabled = dis; b.onclick = fn; return b; };
+    btns.append(
+      mk('↑', 'Mover hacia el fondo', () => { [footLayers[i - 1], footLayers[i]] = [footLayers[i], footLayers[i - 1]]; footChanged(true); }, i === 0),
+      mk('↓', 'Mover hacia encima', () => { [footLayers[i + 1], footLayers[i]] = [footLayers[i], footLayers[i + 1]]; footChanged(true); }, i === footLayers.length - 1),
+      mk('✕', 'Quitar', () => { footLayers.splice(i, 1); footChanged(true); }, false));
+    head.append(on, th, nm, btns);
+    const op = el('div', 'fl-row'), r = el('input'), out = el('output', null, f.opacity + '%');
+    r.type = 'range'; r.min = 10; r.max = 100; r.step = 5; r.value = f.opacity; r.setAttribute('aria-label', 'Opacidad de ' + f.name);
+    r.oninput = () => { f.opacity = +r.value; out.textContent = f.opacity + '%'; footChanged(); };
+    op.append(el('span', null, 'Opacidad'), r, out);
+    const fit = el('div', 'fl-row'), sel = el('select');
+    for (const [v, lab] of [['bottom', 'Ancho completo, abajo'], ['top', 'Ancho completo, arriba'], ['frame', 'Cubre toda la foto (marco)']]) { const o = el('option', null, lab); o.value = v; sel.appendChild(o); }
+    sel.value = f.fit; sel.setAttribute('aria-label', 'Posición de ' + f.name);
+    sel.onchange = () => { f.fit = sel.value; footChanged(); };
+    fit.append(el('span', null, 'Posición'), sel, el('span'));
+    const orientRow = el('div', 'fl-row'), seg = el('div', 'seg full');
+    for (const [v, lab] of [['all', 'Todas'], ['h', 'Horizontales'], ['v', 'Verticales']]) {
+      const b = el('button', null, lab); b.type = 'button'; b.setAttribute('aria-pressed', String(f.orient === v));
+      b.onclick = () => { f.orient = v; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); footChanged(); };
+      seg.appendChild(b);
+    }
+    orientRow.append(el('span', null, 'Fotos'), seg, el('span'));
+    card.append(head, op, fit, orientRow);
+    box.appendChild(card);
+  });
+}
+// Se dibujan en el orden de la lista: la primera capa queda al fondo y la última encima.
+function drawFootPng(x, ow, oh) {
+  const vertical = oh > ow;
+  for (const f of footLayers) {
+    if (!f.enabled || (f.orient === 'h' && vertical) || (f.orient === 'v' && !vertical)) continue;
+    x.save(); x.globalAlpha = f.opacity / 100; x.imageSmoothingQuality = 'high';
+    if (f.fit === 'frame') x.drawImage(f.img, 0, 0, ow, oh);
+    else { const h = Math.round(ow * f.h / f.w); x.drawImage(f.img, 0, f.fit === 'top' ? 0 : oh - h, ow, h); }
+    x.restore();
   }
 }
 async function addLogos(files) {
@@ -2303,7 +2339,6 @@ function syncLabels() {
   $('#o-strength').textContent = S.strength + '%';
   $('#o-logoSize').textContent = S.logoSize + '%';
   $('#o-logoOpacity').textContent = S.logoOpacity + '%';
-  $('#o-footOpacity').textContent = S.footOpacity + '%';
   $('#o-quality').textContent = S.quality;
   $('#o-outSharpen').textContent = S.outSharpen ? String(S.outSharpen) : 'Desactivado';
   for (const k of ['logoMode', 'logoAlign', 'footMode']) $('#seg-' + k).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S[k])));
@@ -2317,7 +2352,7 @@ function onSetting(k) {
   saveSettings(); syncLabels();
   if (['dupSens', 'blurLevel', 'excludeBlur'].includes(k)) { classify(); renderFilm(); updateCounts(); renderPhotoBar(); setProgress(0, readyText()); return; }
   if (['autoFix', 'strength'].includes(k)) { renderFilm(); renderPhotoBar(); refreshPresetThumbs(); }
-  if (['autoFix', 'strength', 'crop', 'outSharpen', 'footMode', 'footFit', 'footOpacity', 'logoMode', 'bandColor', 'logoAlign', 'logoSize', 'logoOpacity', 'maxLong'].includes(k)) renderMain();
+  if (['autoFix', 'strength', 'crop', 'outSharpen', 'footMode', 'logoMode', 'bandColor', 'logoAlign', 'logoSize', 'logoOpacity', 'maxLong'].includes(k)) renderMain();
 }
 function setTab(t) {
   S.tab = t; saveSettings();
@@ -2347,8 +2382,7 @@ $('#haldBtn').onclick = () => makeHald(8).toBlob(b => downloadBlob(b, 'HALD_8_KC
 $('#adjReset').onclick = () => { A = baseParams(); renderAdjust(); lookChanged(true); };
 $('#presetSave').onclick = saveOwnPreset;
 $('#presetName').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); saveOwnPreset(); } });
-$('#footInputH').onchange = e => { if (e.target.files[0]) loadFoot(e.target.files[0], 'h'); e.target.value = ''; };
-$('#footInputV').onchange = e => { if (e.target.files[0]) loadFoot(e.target.files[0], 'v'); e.target.value = ''; };
+$('#footInput').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; addFootFiles(fs); };
 $('#logoInput').onchange = e => { addLogos([...e.target.files]); e.target.value = ''; };
 document.querySelectorAll('.ptabs button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
 document.querySelectorAll('#filmTabs button').forEach(b => b.onclick = () => { filter = b.dataset.f; renderFilm(); });
@@ -2405,8 +2439,14 @@ window.addEventListener('beforeunload', e => { if (busy || items.length) { e.pre
   if (S.format === 'webp' && !supportsWebp) { S.format = 'jpeg'; $('#s-format').value = 'jpeg'; }
   if (!supportsWebp) $('#s-format').querySelector('[value="webp"]').disabled = true;
   for (const l of store.get('logos') || []) { try { await pushLogo(l.name, l.src); } catch (e) {} }
-  const fd = store.get('foot') || {};
-  for (const k of ['h', 'v']) if (fd[k]) { try { await setFoot(k, fd[k].name, fd[k].src); } catch (e) {} }
+  let fl = store.get('footLayers');
+  if (!fl) { // versión anterior: un pie horizontal y uno vertical
+    const fd = store.get('foot') || {}; fl = [];
+    if (fd.h) fl.push({ name: fd.h.name, src: fd.h.src, opacity: S.footOpacity || 100, fit: S.footFit || 'bottom', orient: fd.v ? 'h' : 'all' });
+    if (fd.v) fl.push({ name: fd.v.name, src: fd.v.src, opacity: S.footOpacity || 100, fit: S.footFit || 'bottom', orient: 'v' });
+  }
+  for (const d of fl) { try { await pushFoot(d); } catch (e) {} }
+  if (fl.length && !store.get('footLayers')) saveFoot();
   library = (store.get('library') || []).filter(p => p && p.id && !/^(b|f)-/.test(String(p.id)));
   // Las versiones anteriores agregaban cada preset importado a la pila: aquí se empieza con uno solo.
   stack = (store.get('stack') || []).filter(s => s && presetById(s.libId)).map(s => ({ libId: s.libId, amount: s.amount != null ? s.amount : 100, enabled: s.enabled !== false, editable: !!s.editable }));
